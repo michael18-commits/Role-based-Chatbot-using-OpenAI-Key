@@ -72,9 +72,23 @@ model = st.sidebar.text_input("Model", value="gpt-5-chat")
 temperature = st.sidebar.slider("Temperature", 0.0, 1.2, 0.7, 0.1)
 
 # ---------- API Key ----------
-OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", None)
+st.sidebar.subheader("🔑 OpenAI API Key")
+
+api_key_input = st.sidebar.text_input(
+    "Enter your OpenAI API Key",
+    type="password",
+    placeholder="sk-...",
+    help="You can create and copy your API key from https://platform.openai.com/account/api-keys"
+)
+
+# If user does not input a key, try to load from Streamlit Secrets
+OPENAI_API_KEY = api_key_input.strip() if api_key_input else st.secrets.get("OPENAI_API_KEY", None)
+
 if not OPENAI_API_KEY:
-    st.warning("Please set OPENAI_API_KEY in Streamlit Secrets.", icon="⚠️")
+    st.warning("⚠️ Please enter your OpenAI API Key on the left sidebar.", icon="⚠️")
+else:
+    st.sidebar.success("✅ API Key loaded successfully!")
+
 
 # ---------- Title ----------
 st.title("🤖 Role-based Chatbot")
