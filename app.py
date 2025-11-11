@@ -5,7 +5,7 @@ import streamlit as st
 from typing import List, Dict
 from openai import OpenAI
 
-# ----- Force UTF-8 output -----
+# Force UTF-8 to avoid ascii codec errors
 os.environ["PYTHONIOENCODING"] = "utf-8"
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -13,48 +13,35 @@ try:
 except Exception:
     pass
 
-# ----- Streamlit page setup -----
 st.set_page_config(page_title="Role-based Chatbot", layout="centered")
 
-# ----- Role definitions -----
+# ---------------- Default Roles ----------------
 DEFAULT_ROLES: Dict[str, Dict[str, str]] = {
     "mentor": {
         "name": "Mentor",
-        "system": (
-            "You are a warm, practical career mentor. "
-            "Give short, actionable advice with numbered steps and one example."
-        ),
-        "guardrails": (
-            "- Be concise (under 180 words).\n"
-            "- No medical, financial, or legal advice beyond general guidance."
-        ),
+        "system": "You are a warm, practical career mentor. Give short, actionable advice with numbered steps and one example.",
+        "guardrails": "- Be concise (under 180 words)\n- No medical, financial, or legal advice beyond general guidance.",
     },
     "critic": {
         "name": "Critic",
-        "system": (
-            "You are a constructive film and writing critic. "
-            "Point out three strengths and three concrete improvements with craft references."
-        ),
+        "system": "You are a constructive film and writing critic. Point out three strengths and three concrete improvements with craft references.",
         "guardrails": "- No insults. Use theory terms sparingly.",
     },
     "coder": {
         "name": "Coder",
-        "system": (
-            "You are a senior full-stack engineer. "
-            "Provide code-first answers with runnable snippets."
-        ),
+        "system": "You are a senior full-stack engineer. Provide code-first answers with runnable snippets.",
         "guardrails": "- Prefer Node/TS or Python. Include command lines when needed.",
     },
 }
 
-# ----- Session state -----
+# ---------------- Session State ----------------
 if "roles" not in st.session_state:
     st.session_state.roles = DEFAULT_ROLES.copy()
 
 if "history_by_role" not in st.session_state:
     st.session_state.history_by_role = {k: [] for k in st.session_state.roles.keys()}
 
-# ----- Sidebar: role settings -----
+# ---------------- Sidebar ----------------
 st.sidebar.title("Settings")
 
 role_key = st.sidebar.selectbox(
@@ -77,13 +64,13 @@ if st.sidebar.button("Clear history for this role"):
     st.session_state.history_by_role[role_key] = []
     st.sidebar.success("History cleared.")
 
-# ----- Model picker -----
+# ---------------- Model Selector ----------------
 st.sidebar.markdown("### Model")
 AVAILABLE_MODELS = ["gpt-4o-mini", "gpt-4o"]
 model = st.sidebar.selectbox("Choose a model", options=AVAILABLE_MODELS, index=0)
 temperature = st.sidebar.slider("Temperature", 0.0, 1.2, 0.7, 0.1)
 
-# ----- API key and client -----
+# ---------------- API Key & Client ----------------
 st.sidebar.subheader("OpenAI API Key")
 api_key_input = st.sidebar.text_input(
     "Enter your OpenAI API Key",
@@ -104,7 +91,7 @@ else:
     except Exception as e:
         st.sidebar.error(f"Failed to initialize OpenAI client: {e}")
 
-# ----- Main UI -----
+# ---------------- Main UI ----------------
 st.title("Role-based Chatbot")
 st.caption("Streamlit + OpenAI - per-role prompts and history")
 
@@ -125,7 +112,7 @@ def build_messages(role_def: Dict[str, str], past: List[Dict[str, str]], user_me
     messages.append({"role": "user", "content": user_message})
     return messages
 
-# ----- Chat input -----
+# ---------------- Chat Input ----------------
 user_input = st.chat_input(f"Talk to {st.session_state.roles[role_key]['name']}...")
 
 if user_input:
@@ -147,8 +134,8 @@ if user_input:
             )
             reply = resp.choices[0].message.content or ""
         except Exception as e:
-            err_msg = str(e)
-            if "model_not_found" in err_msg or "does not exist" in err_msg:
+            err = str(e)
+            if "model_not_found" in err or "does not exist" in err:
                 try:
                     fallback_model = "gpt-4o-mini"
                     resp = client.chat.completions.create(
@@ -160,6 +147,21 @@ if user_input:
                     st.sidebar.warning(f"Selected model not available. Falling back to {fallback_model}.")
                 except Exception as e2:
                     reply = f"Error: {e2}"
+            elif "invalid_api_key" in err or "Incorrect API key" in err:
+                reply = (
+                    "Authentication failed. Your API key is invalid or expired. "
+                    "Paste a valid key in the left sidebar (or set OPENAI_API_KEY in Secrets)."
+                )
+            elif "insufficient_quota" in err:
+                reply = (
+                    "Your API key has no remaining quota. Please add a payment method, "
+                    "increase your monthly usage limit, or switch to another key with credit."
+                )
+            elif "rate limit" in err.lower() or "requests per" in err.lower():
+                reply = (
+                    "You are being rate limited. Please wait a moment and try again, "
+                    "or reduce request frequency."
+                )
             else:
                 reply = f"Error: {e}"
 
