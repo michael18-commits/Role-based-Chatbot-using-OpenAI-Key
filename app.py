@@ -68,8 +68,21 @@ if st.sidebar.button("Clear history for this role"):
     st.session_state.history_by_role[role_key] = []
     st.sidebar.success("History cleared.")
 
-model = st.sidebar.text_input("Model", value="gpt-5-chat")
+# ----- Model picker -----
+st.sidebar.markdown("### Model")
+
+AVAILABLE_MODELS = [
+    "gpt-4o-mini",   # Safe default
+    "gpt-4o",
+    # Add more if your account has access:
+    # "gpt-4.1",
+    # "gpt-4.1-mini",
+    # "o3-mini",
+]
+
+model = st.sidebar.selectbox("Choose a model", options=AVAILABLE_MODELS, index=0)
 temperature = st.sidebar.slider("Temperature", 0.0, 1.2, 0.7, 0.1)
+
 
 # ---------- API Key ----------
 st.sidebar.subheader("🔑 OpenAI API Key")
@@ -130,15 +143,30 @@ if user_input:
         role_def = st.session_state.roles[role_key]
         messages = build_messages(role_def, history[:-1], user_input)
 
+try:
+    resp = client.chat.completions.create(
+        model=model,
+        temperature=temperature,
+        messages=messages,
+    )
+    reply = resp.choices[0].message.content or ""
+except Exception as e:
+    err_msg = str(e)
+    if "model_not_found" in err_msg or "does not exist" in err_msg:
         try:
+            fallback_model = "gpt-4o-mini"
             resp = client.chat.completions.create(
-                model=model,
+                model=fallback_model,
                 temperature=temperature,
                 messages=messages,
             )
             reply = resp.choices[0].message.content or ""
-        except Exception as e:
-            reply = f"Error: {e}"
+            st.sidebar.warning(f"⚠️ Selected model not available. Falling back to {fallback_model}.")
+        except Exception as e2:
+            reply = f"Error: {e2}"
+    else:
+        reply = f"Error: {e}"
+
 
         history.append({"role": "assistant", "content": reply})
         st.session_state.history_by_role[role_key] = history
