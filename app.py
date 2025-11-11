@@ -1,4 +1,11 @@
 import streamlit as st
+import sys
+# Force UTF-8 output to avoid 'ascii' codec errors on some environments
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+except Exception:
+    pass
+
 from openai import OpenAI
 from typing import List, Dict
 
@@ -85,22 +92,30 @@ temperature = st.sidebar.slider("Temperature", 0.0, 1.2, 0.7, 0.1)
 
 
 # ---------- API Key ----------
-st.sidebar.subheader("🔑 OpenAI API Key")
+st.sidebar.subheader("OpenAI API Key")
 
 api_key_input = st.sidebar.text_input(
     "Enter your OpenAI API Key",
     type="password",
     placeholder="sk-...",
-    help="You can create and copy your API key from https://platform.openai.com/account/api-keys"
+    help="Create/copy your key from https://platform.openai.com/account/api-keys"
 )
 
-# If user does not input a key, try to load from Streamlit Secrets
+# If user does not input a key, try Streamlit Secrets for compatibility
 OPENAI_API_KEY = api_key_input.strip() if api_key_input else st.secrets.get("OPENAI_API_KEY", None)
 
+client = None
 if not OPENAI_API_KEY:
-    st.warning("⚠️ Please enter your OpenAI API Key on the left sidebar.", icon="⚠️")
+    st.warning("Please enter your OpenAI API Key on the left sidebar.")
 else:
-    st.sidebar.success("✅ API Key loaded successfully!")
+    # Create the OpenAI client now so it exists before any calls
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=OPENAI_API_KEY)
+        st.sidebar.info("API Key loaded successfully.")
+    except Exception as e:
+        st.sidebar.error(f"Failed to initialize OpenAI client: {e}")
+
 
 
 # ---------- Title ----------
@@ -153,17 +168,49 @@ try:
 except Exception as e:
     err_msg = str(e)
     if "model_not_found" in err_msg or "does not exist" in err_msg:
+        if user_input:
+    # echo user
+    history.append({"role": "user", "content": user_input})
+    with st.chat_message("user"):
+        st.markdown(user_input)
+
+    if client is None:
+        reply = "No API client available. Please enter a valid OpenAI API Key in the sidebar."
+        history.append({"role": "assistant", "content": reply})
+        st.session_state.history_by_role[role_key] = history
+        with st.chat_message("assistant"):
+            st.markdown(reply)
+    else:
         try:
-            fallback_model = "gpt-4o-mini"
             resp = client.chat.completions.create(
-                model=fallback_model,
+                model=model,
                 temperature=temperature,
                 messages=messages,
             )
             reply = resp.choices[0].message.content or ""
-            st.sidebar.warning(f"⚠️ Selected model not available. Falling back to {fallback_model}.")
-        except Exception as e2:
-            reply = f"Error: {e2}"
+        except Exception as e:
+            err_msg = str(e)
+            if "model_not_found" in err_msg or "does not exist" in err_msg:
+                try:
+                    fallback_model = "gpt-4o-mini"
+                    resp = client.chat.completions.create(
+                        model=fallback_model,
+                        temperature=temperature,
+                        messages=messages,
+                    )
+                    reply = resp.choices[0].message.content or ""
+                    st.sidebar.warning(f"Selected model not available. Falling back to {fallback_model}.")
+                except Exception as e2:
+                    reply = f"Error: {e2}"
+            else:
+                reply = f"Error: {e}"
+
+        history.append({"role": "assistant", "content": reply})
+        st.session_state.history_by_role[role_key] = history
+
+        with st.chat_message("assistant"):
+            st.markdown(reply)
+
     else:
         reply = f"Error: {e}"
 
